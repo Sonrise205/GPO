@@ -1,0 +1,14 @@
+script.Parent.NameFrame.TextLabel.Position = UDim2.new(0, 0, 1, 0);
+script.Parent.DescFrame.TextLabel.Position = UDim2.new(0, 0, -1, 0);
+script.Parent.Frame.Size = UDim2.new(0, 0, 0, script.Parent.Frame.Size.Y.Offset);
+script.Parent.Frame:TweenSize(UDim2.new(1, 0, 0, script.Parent.Frame.Size.Y.Offset), "Out", "Sine", 0.25);
+task.wait(0.25);
+script.Parent.NameFrame.TextLabel:TweenPosition(UDim2.new(0, 0, 0, 0), "Out", "Quad", 0.5);
+script.Parent.DescFrame.TextLabel:TweenPosition(UDim2.new(0, 0, 0, 0), "Out", "Quad", 0.5);
+local v0 = string.len(script.Parent.DescFrame.TextLabel.Text) / 10;
+task.wait(v0 + 2);
+script.Parent.NameFrame.TextLabel:TweenPosition(UDim2.new(0, 0, 1, 0), "Out", "Quad", 0.5);
+script.Parent.DescFrame.TextLabel:TweenPosition(UDim2.new(0, 0, -1, 0), "Out", "Quad", 0.5);
+task.wait(0.5);
+script.Parent.Frame:TweenSize(UDim2.new(0, 0, 0, script.Parent.Frame.Size.Y.Offset), "Out", "Sine", 0.25);
+_G.destroy(script.Parent.Parent, 0.25);
