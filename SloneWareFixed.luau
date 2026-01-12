@@ -16,7 +16,13 @@ local settings = {
     tracerSubdivisions = 5,
     useWalking = false,
     walkSpeed = 16,
-    hostMode = false
+    hostMode = false,
+    -- Destination circle settings
+    pulseSpeed = 2,           -- Pulse cycles per second
+    circleMinRadius = 15,     -- Minimum radius
+    circleMaxRadius = 25,     -- Maximum radius
+    circleColor = Color3.fromRGB(255, 182, 213),
+    circleOutlineColor = Color3.fromRGB(180, 100, 140)
 }
 
 -- Variables
@@ -27,6 +33,10 @@ local currentPlatform = nil
 local tracerLines = {}
 local currentSmoothPoints = nil
 local slaveAccounts = {}
+local destinationCircle = nil
+local destinationCircleOutline = nil
+local destinationPosition = nil
+local pulseStartTime = 0
 
 -- Cleanup functions
 local function clearTracers()
@@ -440,6 +450,79 @@ local function createTracerLines(smoothPoints)
     end
 end
 
+-- Destination circle functions
+local function clearDestinationCircle()
+    if destinationCircle then
+        destinationCircle:Remove()
+        destinationCircle = nil
+    end
+    if destinationCircleOutline then
+        destinationCircleOutline:Remove()
+        destinationCircleOutline = nil
+    end
+    destinationPosition = nil
+end
+
+local function createDestinationCircle(position)
+    clearDestinationCircle()
+    
+    destinationPosition = position
+    pulseStartTime = tick()
+    
+    -- Outline circle
+    destinationCircleOutline = Drawing.new("Circle")
+    destinationCircleOutline.Visible = false
+    destinationCircleOutline.Color = settings.circleOutlineColor
+    destinationCircleOutline.Thickness = 3
+    destinationCircleOutline.Filled = false
+    destinationCircleOutline.Transparency = 0.8
+    
+    -- Main circle
+    destinationCircle = Drawing.new("Circle")
+    destinationCircle.Visible = false
+    destinationCircle.Color = settings.circleColor
+    destinationCircle.Thickness = 2
+    destinationCircle.Filled = false
+    destinationCircle.Transparency = 1
+end
+
+local function updateDestinationCircle()
+    if not destinationPosition or not destinationCircle or not destinationCircleOutline then
+        return
+    end
+    
+    local screenPos, onScreen = worldToScreen(destinationPosition)
+    
+    if onScreen then
+        -- Calculate pulse using sine wave for smooth lerp effect
+        local elapsed = tick() - pulseStartTime
+        local pulseT = (math.sin(elapsed * settings.pulseSpeed * math.pi * 2) + 1) / 2 -- 0 to 1
+        
+        -- Lerp radius between min and max
+        local radius = settings.circleMinRadius + (settings.circleMaxRadius - settings.circleMinRadius) * pulseT
+        local outlineRadius = radius + 3
+        
+        -- Lerp transparency (more visible at max size)
+        local transparency = 0.6 + 0.4 * pulseT
+        local outlineTransparency = 0.4 + 0.4 * pulseT
+        
+        -- Update main circle
+        destinationCircle.Position = screenPos
+        destinationCircle.Radius = radius
+        destinationCircle.Transparency = transparency
+        destinationCircle.Visible = true
+        
+        -- Update outline
+        destinationCircleOutline.Position = screenPos
+        destinationCircleOutline.Radius = outlineRadius
+        destinationCircleOutline.Transparency = outlineTransparency
+        destinationCircleOutline.Visible = true
+    else
+        destinationCircle.Visible = false
+        destinationCircleOutline.Visible = false
+    end
+end
+
 local function updateTracers()
     if not currentSmoothPoints then return end
     
@@ -458,6 +541,9 @@ local function updateTracers()
             end
         end
     end
+    
+    -- Update destination circle with pulse effect
+    updateDestinationCircle()
 end
 
 local function createPlatform(position)
@@ -680,6 +766,9 @@ local function teleportToPlayer(targetPlayer)
     currentSmoothPoints = generateSmoothPoints(waypoints)
     createTracerLines(currentSmoothPoints)
     
+    -- Create destination circle at target position
+    createDestinationCircle(targetRoot.Position)
+    
     local tracerConnection = RunService.RenderStepped:Connect(function()
         updateTracers()
     end)
@@ -720,6 +809,7 @@ local function teleportToPlayer(targetPlayer)
     task.wait(2)
     tracerConnection:Disconnect()
     clearTracers()
+    clearDestinationCircle()
     clearPlatform()
     currentSmoothPoints = nil
     
@@ -998,6 +1088,7 @@ LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.5)
     isTeleporting = false
     clearTracers()
+    clearDestinationCircle()
     clearPlatform()
     currentSmoothPoints = nil
 end)
