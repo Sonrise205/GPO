@@ -1,4 +1,4 @@
--- SloneWare Player Teleport Script with Host Mode (Fixed Movement)
+-- SloneWare Player Teleport Script with Host Mode (Fixed Movement v2)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local PathfindingService = game:GetService("PathfindingService")
@@ -16,14 +16,7 @@ local settings = {
     tracerSubdivisions = 5,
     useWalking = false,
     walkSpeed = 16,
-    hostMode = false,
-    -- New movement settings
-    stuckThreshold = 1.0,        -- How long before considered stuck (seconds)
-    stuckMoveThreshold = 0.5,    -- Minimum movement to not be considered stuck
-    jumpCooldown = 0.5,          -- Minimum time between jumps
-    maxJumpHeight = 7,           -- Max height difference that can be jumped
-    waypointReachDist = 4,       -- Distance to consider waypoint reached
-    obstacleCheckDist = 2.5,     -- Distance to check for obstacles ahead
+    hostMode = false
 }
 
 -- Variables
@@ -33,12 +26,7 @@ local isTeleporting = false
 local currentPlatform = nil
 local tracerLines = {}
 local currentSmoothPoints = nil
-local slaveAccounts = {} -- Tracks which players are marked as slaves
-
--- Raycast params for obstacle detection
-local raycastParams = RaycastParams.new()
-raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-raycastParams.FilterDescendantsInstances = {}
+local slaveAccounts = {}
 
 -- Cleanup functions
 local function clearTracers()
@@ -71,12 +59,6 @@ local function getHumanoid()
     return char and char:FindFirstChild("Humanoid")
 end
 
--- Update raycast filter to exclude current character
-local function updateRaycastFilter()
-    local char = getCharacter()
-    raycastParams.FilterDescendantsInstances = char and {char} or {}
-end
-
 -- Create ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SloneWareGUI"
@@ -84,7 +66,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
 
--- Main Frame - Exact colors from reference
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 560, 0, 490)
@@ -298,7 +280,7 @@ ModeToggle.Font = Enum.Font.SourceSans
 ModeToggle.TextXAlignment = Enum.TextXAlignment.Left
 ModeToggle.Parent = RightPanel
 
--- Host Command Buttons (Hidden by default)
+-- Host Command Buttons
 local CommandFrame = Instance.new("Frame")
 CommandFrame.Size = UDim2.new(1, -10, 0, 58)
 CommandFrame.Position = UDim2.new(0, 5, 0, 223)
@@ -383,7 +365,7 @@ StatusDisplay.TextYAlignment = Enum.TextYAlignment.Top
 StatusDisplay.TextWrapped = true
 StatusDisplay.Parent = RightPanel
 
--- Catmull-Rom spline interpolation for smooth curves
+-- Catmull-Rom spline interpolation
 local function catmullRom(p0, p1, p2, p3, t)
     local t2 = t * t
     local t3 = t2 * t
@@ -403,7 +385,6 @@ local function catmullRomPoint(p0, p1, p2, p3, t)
     )
 end
 
--- Generate smooth points from waypoints using Catmull-Rom spline
 local function generateSmoothPoints(waypoints)
     local smoothPoints = {}
     local positions = {}
@@ -439,12 +420,10 @@ local function worldToScreen(pos)
     return Vector2.new(screenPos.X, screenPos.Y), onScreen
 end
 
--- Create tracers once and store them
 local function createTracerLines(smoothPoints)
     clearTracers()
     
     for i = 1, #smoothPoints - 1 do
-        -- Outline
         local outline = Drawing.new("Line")
         outline.Visible = false
         outline.Color = Color3.fromRGB(180, 100, 140)
@@ -452,7 +431,6 @@ local function createTracerLines(smoothPoints)
         outline.Transparency = 0.6
         table.insert(tracerLines, {line = outline, index = i})
         
-        -- Main line
         local line = Drawing.new("Line")
         line.Visible = false
         line.Color = Color3.fromRGB(255, 182, 213)
@@ -462,7 +440,6 @@ local function createTracerLines(smoothPoints)
     end
 end
 
--- Update tracer positions without recreating them
 local function updateTracers()
     if not currentSmoothPoints then return end
     
@@ -483,13 +460,14 @@ local function updateTracers()
     end
 end
 
--- Create platform above ground (invisible)
 local function createPlatform(position)
     clearPlatform()
     
-    updateRaycastFilter()
     local rayOrigin = position + Vector3.new(0, 50, 0)
     local rayDirection = Vector3.new(0, -100, 0)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {getCharacter()}
     
     local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
     local groundY = result and result.Position.Y or position.Y
@@ -506,82 +484,14 @@ local function createPlatform(position)
     return platform
 end
 
--- Check if there's an obstacle in front (wall/fence) vs stairs
-local function checkObstacleType(humanoid, rootPart)
-    updateRaycastFilter()
-    
-    local moveDir = rootPart.CFrame.LookVector
-    local hipHeight = humanoid.HipHeight or 2
-    
-    -- Cast ray forward at feet level
-    local feetPos = rootPart.Position - Vector3.new(0, hipHeight, 0)
-    local feetRay = workspace:Raycast(feetPos, moveDir * settings.obstacleCheckDist, raycastParams)
-    
-    -- Cast ray forward at waist level
-    local waistRay = workspace:Raycast(rootPart.Position, moveDir * settings.obstacleCheckDist, raycastParams)
-    
-    -- Cast ray forward at head level
-    local headPos = rootPart.Position + Vector3.new(0, hipHeight, 0)
-    local headRay = workspace:Raycast(headPos, moveDir * settings.obstacleCheckDist, raycastParams)
-    
-    -- Check for stairs: obstacle at feet but not at waist/head
-    if feetRay and not waistRay and not headRay then
-        -- Check the height of the obstacle
-        local obstacleTop = feetRay.Position.Y + 0.5
-        local stepHeight = obstacleTop - feetPos.Y
-        
-        if stepHeight > 0 and stepHeight <= settings.maxJumpHeight then
-            return "stairs", stepHeight
-        end
-    end
-    
-    -- Check for wall: obstacle at multiple heights
-    if feetRay and waistRay then
-        return "wall", 0
-    end
-    
-    -- Check for low obstacle that can be stepped over
-    if feetRay and not waistRay then
-        local obstacleHeight = feetRay.Instance and feetRay.Instance.Size.Y or 0
-        if obstacleHeight <= 2 then
-            return "step", obstacleHeight
-        end
-    end
-    
-    return "none", 0
-end
-
--- Check if humanoid can naturally walk up (stairs detection using floor ahead)
-local function canWalkUpNaturally(humanoid, rootPart, targetPos)
-    updateRaycastFilter()
-    
-    local direction = (targetPos - rootPart.Position)
-    direction = Vector3.new(direction.X, 0, direction.Z).Unit
-    
-    -- Cast ray down from a position slightly ahead and above
-    local checkPos = rootPart.Position + direction * 2 + Vector3.new(0, 3, 0)
-    local groundCheck = workspace:Raycast(checkPos, Vector3.new(0, -5, 0), raycastParams)
-    
-    if groundCheck then
-        local heightDiff = groundCheck.Position.Y - (rootPart.Position.Y - humanoid.HipHeight)
-        -- If the ground ahead is only slightly higher (stairs), humanoid can walk naturally
-        if heightDiff > 0.1 and heightDiff <= 2.5 then
-            return true, heightDiff
-        end
-    end
-    
-    return false, 0
-end
-
--- Check if humanoid is currently in a jump/fall state
-local function isAirborne(humanoid)
-    local state = humanoid:GetState()
-    return state == Enum.HumanoidStateType.Jumping 
-        or state == Enum.HumanoidStateType.Freefall 
-        or state == Enum.HumanoidStateType.FallingDown
-end
-
--- Improved walk to player function with smart obstacle handling
+--[[
+    FIXED WALK FUNCTION
+    Uses the same pattern as the game's SimplePath:
+    - MoveToFinished event instead of polling
+    - Only jump on PathWaypointAction.Jump
+    - ChangeState instead of humanoid.Jump
+    - Proper state checks before jumping
+]]
 local function walkToPlayer(targetPlayer, waypoints)
     local humanoid = getHumanoid()
     local myRoot = getRootPart()
@@ -593,114 +503,137 @@ local function walkToPlayer(targetPlayer, waypoints)
     
     StatusDisplay.Text = "  Walking to player..."
     
-    -- Movement state tracking
-    local lastJumpTime = 0
-    local stuckStartTime = nil
-    local lastPosition = myRoot.Position
-    local consecutiveStuckChecks = 0
+    local currentWaypoint = 2 -- Start at 2 (1 is current position)
+    local reachedEnd = false
+    local walkFailed = false
     
-    for i, waypoint in ipairs(waypoints) do
-        if not isTeleporting then break end
-        
-        local targetPos = waypoint.Position
-        local waypointReached = false
-        local timeout = 0
-        local maxWaypointTime = 20 -- Max time per waypoint
-        
-        -- Initial move command
-        humanoid:MoveTo(targetPos)
-        
-        while not waypointReached and timeout < maxWaypointTime and isTeleporting do
-            task.wait(0.1)
-            timeout = timeout + 0.1
-            
-            local currentPos = myRoot.Position
-            local distance = (Vector3.new(currentPos.X, 0, currentPos.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-            local moved = (currentPos - lastPosition).Magnitude
-            
-            -- Check if waypoint reached (using horizontal distance)
-            if distance < settings.waypointReachDist then
-                waypointReached = true
-                stuckStartTime = nil
-                consecutiveStuckChecks = 0
-                break
-            end
-            
-            -- Stuck detection with proper timing
-            if moved < settings.stuckMoveThreshold then
-                if stuckStartTime == nil then
-                    stuckStartTime = tick()
-                else
-                    local stuckDuration = tick() - stuckStartTime
-                    
-                    -- Only try to unstick after threshold
-                    if stuckDuration > settings.stuckThreshold then
-                        consecutiveStuckChecks = consecutiveStuckChecks + 1
-                        
-                        -- Check what's blocking us
-                        local obstacleType, obstacleHeight = checkObstacleType(humanoid, myRoot)
-                        local canWalkUp, walkUpHeight = canWalkUpNaturally(humanoid, myRoot, targetPos)
-                        
-                        -- Don't jump if airborne or on cooldown
-                        local canJump = not isAirborne(humanoid) and (tick() - lastJumpTime) > settings.jumpCooldown
-                        
-                        if canJump then
-                            -- Only jump for actual traversable obstacles, not walls
-                            if obstacleType == "stairs" or obstacleType == "step" or canWalkUp then
-                                -- Small hop for stairs/steps
-                                humanoid.Jump = true
-                                lastJumpTime = tick()
-                                stuckStartTime = nil
-                                task.wait(0.3) -- Short wait after jump
-                            elseif obstacleType == "none" and waypoint.Action == Enum.PathWaypointAction.Jump then
-                                -- Pathfinding says to jump
-                                humanoid.Jump = true
-                                lastJumpTime = tick()
-                                stuckStartTime = nil
-                                task.wait(0.3)
-                            elseif consecutiveStuckChecks >= 3 then
-                                -- Really stuck, try a jump as last resort
-                                humanoid.Jump = true
-                                lastJumpTime = tick()
-                                stuckStartTime = nil
-                                consecutiveStuckChecks = 0
-                                task.wait(0.5)
-                            end
-                        end
-                        
-                        -- Re-issue move command
-                        humanoid:MoveTo(targetPos)
-                    end
-                end
-            else
-                -- Moving, reset stuck detection
-                stuckStartTime = nil
-                consecutiveStuckChecks = 0
-            end
-            
-            -- Handle explicit jump waypoints (from pathfinding)
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                local heightDiff = targetPos.Y - currentPos.Y
-                if heightDiff > 1 and not isAirborne(humanoid) and (tick() - lastJumpTime) > settings.jumpCooldown then
-                    humanoid.Jump = true
-                    lastJumpTime = tick()
-                    task.wait(0.2)
-                end
-            end
-            
-            lastPosition = currentPos
+    -- Jump function matching game's setJumpState
+    local function tryJump()
+        if not humanoid or humanoid.Health <= 0 then
+            return
         end
-        
-        if not waypointReached and isTeleporting then
-            StatusDisplay.Text = "  Waypoint " .. i .. " taking long..."
-            -- Continue to next waypoint anyway
+        local state = humanoid:GetState()
+        -- Only jump if not already jumping, falling, or dead
+        if state ~= Enum.HumanoidStateType.Jumping 
+            and state ~= Enum.HumanoidStateType.Freefall 
+            and state ~= Enum.HumanoidStateType.Dead then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
         end
     end
     
-    return true
+    -- Move to waypoint function
+    local function moveToWaypoint(waypointIndex)
+        if waypointIndex > #waypoints then
+            reachedEnd = true
+            return
+        end
+        
+        local waypoint = waypoints[waypointIndex]
+        
+        -- ONLY jump if the pathfinding explicitly says to jump
+        -- This is the key fix - no height-based jumping!
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            tryJump()
+        end
+        
+        humanoid:MoveTo(waypoint.Position)
+    end
+    
+    -- Connect to MoveToFinished (like the game does)
+    local moveConnection
+    moveConnection = humanoid.MoveToFinished:Connect(function(reached)
+        if not isTeleporting then
+            moveConnection:Disconnect()
+            return
+        end
+        
+        if reached then
+            currentWaypoint = currentWaypoint + 1
+            if currentWaypoint <= #waypoints then
+                moveToWaypoint(currentWaypoint)
+            else
+                reachedEnd = true
+            end
+        else
+            -- MoveTo failed/timed out
+            walkFailed = true
+        end
+    end)
+    
+    -- Stuck detection (simple version matching game's approach)
+    local lastPosition = myRoot.Position
+    local stuckCount = 0
+    local STUCK_THRESHOLD = 3 -- Number of checks before considered stuck
+    
+    local stuckConnection
+    stuckConnection = RunService.Heartbeat:Connect(function()
+        if not isTeleporting or reachedEnd or walkFailed then
+            return
+        end
+        
+        if not myRoot or not myRoot.Parent then
+            walkFailed = true
+            return
+        end
+        
+        local moved = (myRoot.Position - lastPosition).Magnitude
+        
+        -- Check if stuck (moved less than 0.1 studs)
+        if moved <= 0.1 then
+            stuckCount = stuckCount + 1
+            
+            -- Only try to unstick after threshold (not on every frame)
+            if stuckCount >= STUCK_THRESHOLD then
+                -- Check current waypoint action - only jump if it says to
+                if currentWaypoint <= #waypoints then
+                    local waypoint = waypoints[currentWaypoint]
+                    if waypoint.Action == Enum.PathWaypointAction.Jump then
+                        tryJump()
+                    end
+                end
+                stuckCount = 0
+                -- Re-issue move command
+                if currentWaypoint <= #waypoints then
+                    humanoid:MoveTo(waypoints[currentWaypoint].Position)
+                end
+            end
+        else
+            stuckCount = 0
+        end
+        
+        lastPosition = myRoot.Position
+    end)
+    
+    -- Start walking
+    moveToWaypoint(currentWaypoint)
+    
+    -- Wait for completion with timeout
+    local timeout = 0
+    local maxTimeout = #waypoints * 8 -- 8 seconds per waypoint max
+    
+    while not reachedEnd and not walkFailed and isTeleporting and timeout < maxTimeout do
+        task.wait(0.1)
+        timeout = timeout + 0.1
+    end
+    
+    -- Cleanup
+    if moveConnection then
+        moveConnection:Disconnect()
+    end
+    if stuckConnection then
+        stuckConnection:Disconnect()
+    end
+    
+    if reachedEnd then
+        StatusDisplay.Text = "  Arrived!"
+        return true
+    else
+        StatusDisplay.Text = "  Walk incomplete"
+        return false
+    end
 end
 
--- Teleport function (combined TP and Walk modes)
+-- Teleport function
 local function teleportToPlayer(targetPlayer)
     if isTeleporting then
         StatusDisplay.Text = "  Already in progress..."
@@ -723,14 +656,12 @@ local function teleportToPlayer(targetPlayer)
     isTeleporting = true
     StatusDisplay.Text = "  Computing path..."
     
-    updateRaycastFilter()
-    
     local path = PathfindingService:CreatePath({
         AgentRadius = 2,
         AgentHeight = 5,
         AgentCanJump = true,
         AgentCanClimb = false,
-        WaypointSpacing = 6  -- Increased for smoother movement
+        WaypointSpacing = 4
     })
     
     local success = pcall(function()
@@ -746,22 +677,15 @@ local function teleportToPlayer(targetPlayer)
     local waypoints = path:GetWaypoints()
     StatusDisplay.Text = "  Moving... (" .. #waypoints .. " waypoints)"
     
-    -- Generate smooth points and create lines ONCE
     currentSmoothPoints = generateSmoothPoints(waypoints)
     createTracerLines(currentSmoothPoints)
     
-    -- Update line positions every frame
     local tracerConnection = RunService.RenderStepped:Connect(function()
         updateTracers()
     end)
     
     if settings.useWalking then
-        -- Walking mode with improved obstacle handling
-        local walkSuccess = walkToPlayer(targetPlayer, waypoints)
-        
-        if walkSuccess then
-            StatusDisplay.Text = "  Arrived!"
-        end
+        walkToPlayer(targetPlayer, waypoints)
     else
         -- Teleport mode
         local totalDist = 0
@@ -803,21 +727,18 @@ local function teleportToPlayer(targetPlayer)
     StatusDisplay.Text = "  Ready"
 end
 
--- Function to send chat command
+-- Chat command function
 local function sendChatCommand(message)
     if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-        -- New TextChatService
         local textChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
         if textChannel then
             textChannel:SendAsync(message)
         end
     else
-        -- Legacy chat
         game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, "All")
     end
 end
 
--- Get selected slaves
 local function getSelectedSlaves()
     local selected = {}
     for playerName, isSelected in pairs(slaveAccounts) do
@@ -828,7 +749,7 @@ local function getSelectedSlaves()
     return selected
 end
 
--- Host mode toggle handler
+-- Host mode toggle
 HostModeToggle.MouseButton1Click:Connect(function()
     settings.hostMode = not settings.hostMode
     if settings.hostMode then
@@ -844,7 +765,6 @@ HostModeToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- TP Selected command
 TPSelectedBtn.MouseButton1Click:Connect(function()
     if not selectedPlayer then
         StatusDisplay.Text = "  Select a target player first!"
@@ -863,7 +783,6 @@ TPSelectedBtn.MouseButton1Click:Connect(function()
     StatusDisplay.Text = "  Sent: " .. command
 end)
 
--- Walk Selected command
 WalkSelectedBtn.MouseButton1Click:Connect(function()
     if not selectedPlayer then
         StatusDisplay.Text = "  Select a target player first!"
@@ -881,6 +800,7 @@ WalkSelectedBtn.MouseButton1Click:Connect(function()
     sendChatCommand(command)
     StatusDisplay.Text = "  Sent: " .. command
 end)
+
 ModeToggle.MouseButton1Click:Connect(function()
     settings.useWalking = not settings.useWalking
     if settings.useWalking then
@@ -894,7 +814,6 @@ ModeToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- Update info panel
 local function updateInfo(player)
     if not player then
         for _, label in pairs(infoLabels) do
@@ -911,7 +830,6 @@ local function updateInfo(player)
     infoLabels["Status"].Text = "  Status - " .. (player.Character and "In Game" or "Loading")
 end
 
--- Create player button with image and checkbox
 local function createPlayerButton(player)
     if player == LocalPlayer then return end
     
@@ -924,7 +842,6 @@ local function createPlayerButton(player)
     Button.Text = ""
     Button.Parent = PlayerList
     
-    -- Checkbox (only visible in host mode)
     local Checkbox = Instance.new("TextButton")
     Checkbox.Size = UDim2.new(0, 20, 0, 20)
     Checkbox.Position = UDim2.new(0, 5, 0.5, -10)
@@ -967,7 +884,6 @@ local function createPlayerButton(player)
     NameLabel.TextXAlignment = Enum.TextXAlignment.Left
     NameLabel.Parent = Button
     
-    -- Checkbox click handler
     Checkbox.MouseButton1Click:Connect(function()
         slaveAccounts[player.Name] = not slaveAccounts[player.Name]
         CheckMark.Visible = slaveAccounts[player.Name]
@@ -1010,7 +926,6 @@ local function createPlayerButton(player)
     return Button
 end
 
--- Refresh list
 local function refreshList()
     local search = SearchBox.Text:lower()
     
@@ -1024,7 +939,6 @@ local function refreshList()
         if player ~= LocalPlayer then
             if search == "" or player.Name:lower():find(search) then
                 local button = createPlayerButton(player)
-                -- Update checkbox visibility
                 if button then
                     local checkbox = button:FindFirstChildWhichIsA("TextButton")
                     if checkbox then
@@ -1038,19 +952,6 @@ local function refreshList()
     PlayerList.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y)
 end
 
--- Update checkboxes when host mode changes
-local function updateCheckboxVisibility()
-    for _, button in pairs(PlayerList:GetChildren()) do
-        if button:IsA("TextButton") then
-            local checkbox = button:FindFirstChildWhichIsA("TextButton")
-            if checkbox then
-                checkbox.Visible = settings.hostMode
-            end
-        end
-    end
-end
-
--- Events
 SearchBox:GetPropertyChangedSignal("Text"):Connect(refreshList)
 
 RefreshBtn.MouseButton1Click:Connect(function()
@@ -1101,7 +1002,6 @@ LocalPlayer.CharacterAdded:Connect(function()
     currentSmoothPoints = nil
 end)
 
--- Auto refresh
 task.spawn(function()
     while task.wait(5) do
         if autoRefresh and not isTeleporting then
@@ -1114,9 +1014,8 @@ ListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     PlayerList.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y)
 end)
 
--- Initial load
 refreshList()
 updateInfo(nil)
 StatusDisplay.Text = "  Ready"
 
-print("SloneWare loaded (Fixed Movement)")
+print("SloneWare loaded (Fixed v2)")
