@@ -1,0 +1,20 @@
+return table.freeze({
+    Damping = 0.1, 
+    Stiffness = 0.2, 
+    Inertia = 0, 
+    Elasticity = 3, 
+    AnchorDepth = 0, 
+    AnchorsRotate = false, 
+    Constraint = "Spring", 
+    Force = Vector3.new(0, 0.20000000298023224, 0, 0), 
+    Gravity = Vector3.new(-0, -25, -0, -0), 
+    WindType = "Hybrid", 
+    MatchWorkspaceWind = true, 
+    WindInfluence = 1, 
+    WindStrength = 2, 
+    WindSpeed = 1, 
+    WindDirection = Vector3.new(1, 0, 0, 0), 
+    UpdateRate = 60, 
+    ActivationDistance = 45, 
+    ThrottleDistance = 15
+});
