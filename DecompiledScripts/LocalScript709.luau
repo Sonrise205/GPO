@@ -1,0 +1,1 @@
+require(game.ReplicatedStorage.Modules.NPCInteractions):startchat(workspace.NPCs.Raphtalia);
