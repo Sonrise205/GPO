@@ -1,60 +1,80 @@
 # SloneWare Scripts
 
-## Fruit Finder (`SloneWareFruitFinder.lua`)
+## Fruit Finder v2.2 (Safe Edition)
 
 A UI script for finding and teleporting to fruits in GPO-style Roblox games.
 
+### Safety Features
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| No `print`/`warn` | ✅ | No console output |
+| No `FireServer` | ✅ | No server communication |
+| No HTTP calls | ✅ | No external requests |
+| Walk mode default | ✅ | Safer than teleporting |
+| Speed mod disabled | ✅ | Must manually enable |
+| Safe cleanup | ✅ | Uses `pcall` wrappers |
+
 ### Features
 
-| Feature | Description |
-|---------|-------------|
-| **Fruit Detection** | Scans workspace for Tools with `FruitEater` child |
-| **Fruit Images** | Shows actual fruit images from `Tool.TextureId` |
-| **Distance Display** | Real-time distance updates, color-coded by proximity |
-| **Teleport Mode** | Instant teleport with pathfinding and checkpoints |
-| **Walk Mode** | Safer pathfinding-based walking |
-| **Auto Pickup** | Automatically triggers ProximityPrompt when close |
-| **WalkSpeed Slider** | Adjust character speed (0-200) with visual slider |
-| **Path Tracers** | Visual path lines using Catmull-Rom splines |
-| **Pulse Circle** | Animated destination indicator |
+- **Fruit Detection**: Scans workspace for Tools with `FruitEater` child
+- **Fruit Images**: Shows actual images from `Tool.TextureId`
+- **Distance Display**: Real-time, color-coded by proximity
+- **Walk Mode** (default): Pathfinding-based walking
+- **Teleport Mode**: Checkpoint-based teleportation
+- **Auto Pickup**: Triggers ProximityPrompt when close
+- **Speed Modifier**: Optional, disabled by default (risky)
 
 ### UI Controls
 
-- **🚀 Mode Toggle**: Switch between Teleport and Walking mode
-- **✅ Auto Pickup**: Toggle automatic fruit collection
-- **🏃 WalkSpeed Slider**: Drag to adjust speed, Reset button to restore default
-- **🔄 Refresh**: Manually refresh fruit list
-- **⛔ Stop**: Cancel current movement
-- **⏱️ TP Delay**: Adjust delay between teleport checkpoints
-- **−/+**: Minimize/maximize window
-- **×**: Close script
+| Button | Function |
+|--------|----------|
+| 🚶 Walk Mode | Toggle walk/teleport mode |
+| ✓ Auto Pickup | Toggle automatic collection |
+| ⚠️ Speed Mod | Toggle speed modification (risky) |
+| 🔄 Refresh | Manual fruit list refresh |
+| ⛔ Stop | Cancel current movement |
+| GO | Teleport/walk to fruit |
 
-### How It Works
+### Default Settings (Safe)
 
-1. Scans `workspace:GetChildren()` for Tools with `FruitEater`
-2. Also checks `workspace.Env.Settings` for fruit models
-3. Displays fruits sorted by distance
-4. Uses PathfindingService to compute path
-5. Teleports in checkpoints or walks along waypoints
-6. Attempts pickup via `fireproximityprompt` or direct prompt manipulation
+```lua
+useWalking = true       -- Walk instead of teleport
+autoPickup = true       -- Try to auto-pickup
+enableSpeedMod = false  -- Speed hack disabled
+tpDelay = 0.5          -- Delay between checkpoints
+scanInterval = 3        -- Refresh every 3 seconds
+```
 
-### Pickup Methods (in order of attempt)
+### Pickup Methods
 
-1. `fireproximityprompt()` - Executor function (most reliable)
-2. `prompt:InputHoldBegin()/InputHoldEnd()` - Direct simulation
-3. `fireclickdetector()` - Fallback for ClickDetector
+1. `fireproximityprompt()` - Executor function
+2. `prompt:InputHoldBegin()/End()` - Direct simulation
+3. `fireclickdetector()` - Fallback
 
-### Safety Notes
+### Files
 
-⚠️ **This script is for educational purposes only**
+```
+/scripts/
+├── SloneWareFruitFinder.lua  (941 lines)
+└── README.md
+```
 
-- Teleporting may be detected by anti-cheat systems
-- WalkSpeed modification can trigger detection
-- Use at your own risk in any game
-- Walking mode is generally safer than teleport mode
+### Usage
 
-### Requirements
+1. Execute the script in your executor
+2. Fruits will appear in the list sorted by distance
+3. Click "GO" to travel to a fruit
+4. Auto-pickup will attempt to collect it
 
-- Roblox executor with Drawing library support
-- `fireproximityprompt` function (executor-provided)
-- Game must use the GPO fruit structure (Tool with FruitEater child)
+### Risk Levels
+
+| Mode | Risk | Detection |
+|------|------|-----------|
+| Walking | Low | Normal pathfinding |
+| Teleport | Medium | Position changes |
+| Speed Mod | High | WalkSpeed changes |
+
+### Disclaimer
+
+⚠️ **Educational purposes only. Use at your own risk.**
